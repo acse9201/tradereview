@@ -1,0 +1,557 @@
+<!--20251123_v002:更改輸入日期的方式、更改開倉平倉前後各100根K棒、開倉平倉範圍改成箭頭方式呈現-->
+
+
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>幣安合約覆盤小工具</title>
+
+  <!-- lightweight-charts -->
+  <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: #050505;
+      color: #f5f5f5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+    }
+
+    .page-wrapper {
+      min-height: 100vh;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .page-title {
+      font-size: 32px;
+      font-weight: 700;
+      text-align: center;
+      margin: 10px 0 6px;
+    }
+
+    .page-subtitle {
+      text-align: center;
+      font-size: 13px;
+      color: #aaa;
+      margin-bottom: 20px;
+    }
+
+    /* 覆盤表單 */
+    .replay-panel {
+      background: #0a0a0a;
+      border-radius: 12px;
+      padding: 18px;
+      border: 1px solid #333;
+      margin-bottom: 20px;
+    }
+
+    .replay-panel-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .replay-form {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px 16px;
+      align-items: end;
+    }
+
+    @media (max-width: 900px) {
+      .replay-form {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .replay-form {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .form-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .form-label {
+      font-size: 13px;
+      color: #ccc;
+    }
+
+    .form-label small {
+      font-size: 11px;
+      color: #777;
+      display: block;
+    }
+
+    .text-input {
+      background: #111;
+      border-radius: 8px;
+      border: 1px solid #444;
+      padding: 8px 10px;
+      font-size: 14px;
+      color: #eee;
+      outline: none;
+      width: 100%;
+    }
+
+    .text-input:focus {
+      border-color: #888;
+    }
+
+    .replay-btn {
+      padding: 10px 16px;
+      font-size: 17px;
+      border-radius: 8px;
+      border: none;
+      background: #1f5eff;
+      color: #f5f5f5;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.05s;
+      width: 100%;
+    }
+
+    .replay-btn:hover:not(:disabled) {
+      background: #3b6fff;
+      transform: translateY(-1px);
+    }
+
+    .replay-btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .status-row {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #aaa;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .error-text {
+      color: #ff6b6b;
+    }
+
+    /* 圖表卡片 */
+    .chart-card {
+      background: #080808;
+      border-radius: 10px;
+      border: 1px solid #333;
+      padding: 10px;
+      margin-bottom: 18px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 4px;
+      font-size: 15px;
+    }
+
+    .chart-title-left {
+      display: flex;
+      gap: 6px;
+      align-items: baseline;
+    }
+
+    .chart-symbol {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .chart-interval {
+      font-size: 12px;
+      color: #aaa;
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1px solid #555;
+      background: #101010;
+    }
+
+    .chart-extra {
+      font-size: 11px;
+      color: #777;
+    }
+
+    .chart-canvas {
+      width: 100%;
+      height: 300px;
+    }
+
+    @media (min-width: 960px) {
+      .chart-canvas {
+        height: 320px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page-wrapper">
+    <h1 class="page-title">幣安合約覆盤小工具</h1>
+    <div class="page-subtitle">
+      輸入標的與開倉／平倉時間（日期用 YYYYMMDD），顯示 15m / 1h / 4h K 線，並用箭頭標記開平倉
+    </div>
+
+    <!-- 覆盤表單 -->
+    <section class="replay-panel">
+      <div class="replay-panel-title">覆盤參數</div>
+      <div class="replay-form">
+        <!-- 標的 -->
+        <div class="form-row">
+          <label class="form-label">
+            標的名稱
+            <small>例如：BTC、ETH，無須輸入 USDT</small>
+          </label>
+          <input
+            id="input-symbol"
+            class="text-input"
+            type="text"
+            placeholder="例如：BTC"
+          />
+        </div>
+
+        <!-- 開倉時間 -->
+        <div class="form-row">
+          <label class="form-label">
+            開倉時間（台灣時間，24H）
+            <small>格式：YYYYMMDD HH:MM，例如 20250917 13:45</small>
+          </label>
+          <input
+            id="input-open"
+            class="text-input"
+            type="text"
+            placeholder="20250917 13:45"
+          />
+        </div>
+
+        <!-- 平倉時間 -->
+        <div class="form-row">
+          <label class="form-label">
+            平倉時間（台灣時間，24H）
+            <small>格式：YYYYMMDD HH:MM，例如 20250917 15:30</small>
+          </label>
+          <input
+            id="input-close"
+            class="text-input"
+            type="text"
+            placeholder="20250917 15:30"
+          />
+        </div>
+
+        <!-- 按鈕 -->
+        <div class="form-row">
+          <button id="btn-replay" class="replay-btn">
+            覆盤
+          </button>
+        </div>
+      </div>
+
+      <div class="status-row">
+        <div id="status-text">尚未覆盤</div>
+        <div id="error-text" class="error-text"></div>
+      </div>
+    </section>
+
+    <!-- 圖表區 -->
+    <section>
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title-left">
+            <span class="chart-symbol" id="symbol-15m">–</span>
+            <span class="chart-interval">15 分 K</span>
+          </div>
+          <div class="chart-extra">MA 30 / 45 / 60</div>
+        </div>
+        <div id="chart-15m" class="chart-canvas"></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title-left">
+            <span class="chart-symbol" id="symbol-1h">–</span>
+            <span class="chart-interval">1 小時 K</span>
+          </div>
+          <div class="chart-extra">MA 30 / 45 / 60</div>
+        </div>
+        <div id="chart-1h" class="chart-canvas"></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title-left">
+            <span class="chart-symbol" id="symbol-4h">–</span>
+            <span class="chart-interval">4 小時 K</span>
+          </div>
+          <div class="chart-extra">MA 30 / 45 / 60</div>
+        </div>
+        <div id="chart-4h" class="chart-canvas"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const BASE_URL = "https://fapi.binance.com";
+
+    const inputSymbol = document.getElementById("input-symbol");
+    const inputOpen = document.getElementById("input-open");
+    const inputClose = document.getElementById("input-close");
+    const statusText = document.getElementById("status-text");
+    const errorText = document.getElementById("error-text");
+
+    document.getElementById("btn-replay").addEventListener("click", handleReplay);
+
+    /* 解析 YYYYMMDD HH:MM → JS Date（台灣時間） */
+    function parseTWDateTimeYYYYMMDD(str) {
+      if (!str) return null;
+      const m = str.trim().match(/^(\d{4})(\d{2})(\d{2})\s+(\d{1,2}):(\d{2})$/);
+      if (!m) return null;
+
+      let [_, y, mon, d, h, min] = m;
+      if (h.length === 1) h = "0" + h;
+
+      return new Date(`${y}-${mon}-${d}T${h}:${min}:00+08:00`);
+    }
+
+    function showError(msg) {
+      errorText.textContent = msg;
+      statusText.textContent = "";
+    }
+
+    function intervalToSec(interval) {
+      if (interval.endsWith("m")) return parseInt(interval) * 60;
+      if (interval.endsWith("h")) return parseInt(interval) * 60 * 60;
+      return 60;
+    }
+
+    async function handleReplay() {
+      errorText.textContent = "";
+      statusText.textContent = "覆盤中…";
+
+      const symRaw = inputSymbol.value.trim().toUpperCase();
+      if (!symRaw) {
+        showError("請輸入標的名稱，例如 BTC");
+        return;
+      }
+      const symbol = symRaw + "USDT";
+
+      const openDT = parseTWDateTimeYYYYMMDD(inputOpen.value);
+      const closeDT = parseTWDateTimeYYYYMMDD(inputClose.value);
+
+      if (!openDT || !closeDT) {
+        showError("請依格式輸入開倉與平倉時間（YYYYMMDD HH:MM）");
+        return;
+      }
+      if (closeDT <= openDT) {
+        showError("平倉時間不得早於或等於開倉時間");
+        return;
+      }
+
+      const openTS = Math.floor(openDT.getTime() / 1000);
+      const closeTS = Math.floor(closeDT.getTime() / 1000);
+
+      try {
+        await drawReplay(symbol, "15m", openTS, closeTS);
+        await drawReplay(symbol, "1h", openTS, closeTS);
+        await drawReplay(symbol, "4h", openTS, closeTS);
+
+        statusText.textContent = "覆盤完成 ✔︎";
+      } catch (err) {
+        console.error(err);
+        showError("抓取或繪製 K 線時發生錯誤，請打開 Console 查看細節");
+      }
+    }
+
+    async function fetchKlines(symbol, interval, openTS, closeTS) {
+      const sec = intervalToSec(interval);
+
+      // 依照開倉/平倉時間去抓：前後多抓一點
+      const startTime = (openTS - 120 * sec) * 1000; // 多抓兩倍安全範圍
+      const endTime = (closeTS + 120 * sec) * 1000;
+
+      const url =
+        `${BASE_URL}/fapi/v1/klines?symbol=${symbol}` +
+        `&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=1500`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("K 線 API 回應錯誤");
+      const raw = await res.json();
+
+      return raw.map(c => ({
+        time: c[0] / 1000,
+        open: +c[1],
+        high: +c[2],
+        low: +c[3],
+        close: +c[4],
+        volume: +c[5],
+      }));
+    }
+
+    function calcMA(data, period) {
+      const out = [];
+      let sum = 0;
+      const buf = [];
+
+      for (let i = 0; i < data.length; i++) {
+        buf.push(data[i].close);
+        sum += data[i].close;
+
+        if (buf.length > period) {
+          sum -= buf.shift();
+        }
+
+        if (buf.length === period) {
+          out.push({
+            time: data[i].time,
+            value: sum / period,
+          });
+        }
+      }
+      return out;
+    }
+
+    function findBarIndexByTime(data, targetTS) {
+      if (!data.length) return -1;
+      for (let i = 0; i < data.length - 1; i++) {
+        const cur = data[i].time;
+        const next = data[i + 1].time;
+        if (cur <= targetTS && targetTS < next) {
+          return i;
+        }
+      }
+      if (targetTS >= data[data.length - 1].time) return data.length - 1;
+      if (targetTS < data[0].time) return 0;
+      return -1;
+    }
+
+    async function drawReplay(symbol, interval, openTS, closeTS) {
+      const chartEl = document.getElementById(`chart-${interval}`);
+      const symbolEl = document.getElementById(`symbol-${interval}`);
+
+      chartEl.innerHTML = "";
+      symbolEl.textContent = symbol.replace("USDT", "") + ` (${interval})`;
+
+      const data = await fetchKlines(symbol, interval, openTS, closeTS);
+
+      if (!data.length) {
+        chartEl.innerHTML = "<div style='color:#f66;font-size:12px;'>查無此時間區間 K 線資料</div>";
+        return;
+      }
+
+      const openIndex = findBarIndexByTime(data, openTS);
+      const closeIndex = findBarIndexByTime(data, closeTS);
+
+      if (openIndex === -1 || closeIndex === -1) {
+        chartEl.innerHTML = "<div style='color:#f66;font-size:12px;'>找不到對應的開倉／平倉 K 棒</div>";
+        return;
+      }
+
+      const from = Math.max(0, openIndex - 100);          // 前 100 根
+      const to = Math.min(data.length - 1, closeIndex + 100); // 後 100 根
+      const view = data.slice(from, to + 1);
+
+      const chart = LightweightCharts.createChart(chartEl, {
+        width: chartEl.clientWidth,
+        height: chartEl.clientHeight,
+        layout: {
+          background: { color: "#080808" },
+          textColor: "#ddd",
+        },
+        grid: {
+          vertLines: { color: "#222" },
+          horzLines: { color: "#222" },
+        },
+        timeScale: {
+          timeVisible: true,
+          secondsVisible: false,
+        },
+      });
+
+      // K 線
+      const candleSeries = chart.addCandlestickSeries({
+        upColor: "#f7525f",
+        borderUpColor: "#f7525f",
+        wickUpColor: "#f7525f",
+        downColor: "#22ab94",
+        borderDownColor: "#22ab94",
+        wickDownColor: "#22ab94",
+      });
+      candleSeries.setData(view);
+
+      // 成交量
+      const volumeSeries = chart.addHistogramSeries({
+        priceScaleId: "volume",
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      volumeSeries.setData(
+        view.map(d => ({
+          time: d.time,
+          value: d.volume,
+          color: d.close >= d.open ? "#f7525f" : "#22ab94",
+        }))
+      );
+      chart.priceScale("volume").applyOptions({
+        scaleMargins: { top: 0.8, bottom: 0 },
+      });
+
+      // MA 30 / 45 / 60
+      chart.addLineSeries({
+        color: "#f77c80",
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      }).setData(calcMA(view, 30));
+
+      chart.addLineSeries({
+        color: "#ffb74d",
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      }).setData(calcMA(view, 45));
+
+      chart.addLineSeries({
+        color: "#66bb6a",
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      }).setData(calcMA(view, 60));
+
+      // ===== 用 marker 畫開倉 / 平倉箭頭 =====
+      const openBar = data[openIndex];
+      const closeBar = data[closeIndex];
+
+      candleSeries.setMarkers([
+        {
+          time: openBar.time,
+          position: 'belowBar',      // K 棒底部
+          color: '#ffe600',          // 黃色
+          shape: 'arrowUp',          // 向上箭頭
+          size: 1,
+        },
+        {
+          time: closeBar.time,
+          position: 'aboveBar',      // K 棒頂部
+          color: '#ffe600',          // 黃色
+          shape: 'arrowDown',        // 向下箭頭
+          size: 1,
+        },
+      ]);
+    }
+  </script>
+</body>
+</html>
