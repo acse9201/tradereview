@@ -1,4 +1,5 @@
 <!--20251123_v002:更改輸入日期的方式、更改開倉平倉前後各100根K棒、開倉平倉範圍改成箭頭方式呈現-->
+<!--20251124_v003:更改輸入時間的方式、更改K線圖下方時間刻度為台灣時間-->
 
 
 <!DOCTYPE html>
@@ -315,17 +316,21 @@
 
     document.getElementById("btn-replay").addEventListener("click", handleReplay);
 
-    /* 解析 YYYYMMDD HH:MM → JS Date（台灣時間） */
-    function parseTWDateTimeYYYYMMDD(str) {
-      if (!str) return null;
-      const m = str.trim().match(/^(\d{4})(\d{2})(\d{2})\s+(\d{1,2}):(\d{2})$/);
-      if (!m) return null;
+    // 解析 YYYYMMDD HHMM → Date(台灣時間)
+function parseTWDateTimeYYYYMMDD(str) {
+  if (!str) return null;
 
-      let [_, y, mon, d, h, min] = m;
-      if (h.length === 1) h = "0" + h;
+  // 支援格式：20250917 1745
+  const m = str.trim().match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2})(\d{2})$/);
+  if (!m) return null;
 
-      return new Date(`${y}-${mon}-${d}T${h}:${min}:00+08:00`);
-    }
+  let [_, y, mon, d, hhmm1, hhmm2] = m;
+
+  const h = hhmm1;
+  const min = hhmm2;
+
+  return new Date(`${y}-${mon}-${d}T${h}:${min}:00+08:00`);
+}
 
     function showError(msg) {
       errorText.textContent = msg;
@@ -478,6 +483,13 @@
         timeScale: {
           timeVisible: true,
           secondsVisible: false,
+	  tickMarkFormatter: (time) => {
+    const d = new Date(time * 1000);
+    const tw = new Date(d.getTime() + 8 * 3600 * 1000); // UTC+8
+    const h = tw.getHours().toString().padStart(2, "0");
+    const m = tw.getMinutes().toString().padStart(2, "0");
+    return `${h}:${m}`;
+	}
         },
       });
 
